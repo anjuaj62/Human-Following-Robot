@@ -1,87 +1,92 @@
-#define trig 8
-#define echo 9
+// Human Following Robot - Arduino Uno
+// Ultrasonic distance + two IR sensors for steering.
+//
+// Behavior:
+//   distance < 8 cm or > 20 cm, or no echo -> stop
+//   8-20 cm, left IR triggered only        -> turn left
+//   8-20 cm, right IR triggered only       -> turn right
+//   8-20 cm, both or neither triggered     -> forward
+// IR modules read LOW (0) when triggered.
 
-#define irl 2
-#define irr 3
+#define TRIG 8
+#define ECHO 9
 
-#define m1a 5
-#define m1b 6
-#define m2a 10
-#define m2b 11
+#define IRL 2
+#define IRR 3
 
+#define M1A 5
+#define M1B 6
+#define M2A 10
+#define M2B 11
 
+const int SPEED = 100;                    // PWM value, 0-255
+const long MIN_DIST_CM = 8;
+const long MAX_DIST_CM = 20;
+const unsigned long ECHO_TIMEOUT_US = 30000UL;  // about 5 m, stops pulseIn from blocking for 1 s
 
 void setup() {
-  pinMode(trig, OUTPUT);
-  pinMode(echo, INPUT);
-  
-  pinMode(irl, INPUT);  // FIXED: IR sensors should be INPUT
-  pinMode(irr, INPUT);
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
 
-  pinMode(m1a, OUTPUT);          
-  pinMode(m1b, OUTPUT);
-  pinMode(m2a, OUTPUT);
-  pinMode(m2b, OUTPUT);
+  pinMode(IRL, INPUT);
+  pinMode(IRR, INPUT);
+
+  pinMode(M1A, OUTPUT);
+  pinMode(M1B, OUTPUT);
+  pinMode(M2A, OUTPUT);
+  pinMode(M2B, OUTPUT);
 
   Serial.begin(9600);
 }
 
-// === Distance Calculation ===
+// Returns the distance in cm, or -1 if no echo came back in time.
 long getDistance() {
-  digitalWrite(trig, LOW);
+  digitalWrite(TRIG, LOW);
   delayMicroseconds(2);
 
-  digitalWrite(trig, HIGH);
+  digitalWrite(TRIG, HIGH);
   delayMicroseconds(10);
-  digitalWrite(trig, LOW);
+  digitalWrite(TRIG, LOW);
 
-  long duration = pulseIn(echo, HIGH);
-  long distance = duration * 0.034 / 2;
-  return distance;
+  long duration = pulseIn(ECHO, HIGH, ECHO_TIMEOUT_US);
+  if (duration == 0) {
+    return -1;
+  }
+  return duration * 0.034 / 2;
 }
 
-// === Motor Control Functions ===
 void moveForward() {
-  analogWrite(m1a, 100);  // Motor A forward
-  analogWrite(m1b, 0);
-  analogWrite(m2a, 100);  // Motor B forward
-  analogWrite(m2b, 0);
-  delay(1000);
-}
-
-void moveBackward() {
-  analogWrite(m1a, 0);
-  analogWrite(m1b, 100);
-  analogWrite(m2a, 0);
-  analogWrite(m2b, 100);
+  analogWrite(M1A, SPEED);
+  analogWrite(M1B, 0);
+  analogWrite(M2A, SPEED);
+  analogWrite(M2B, 0);
 }
 
 void turnLeft() {
-  analogWrite(m1a, 0);     // Left motor stops or reverses
-  analogWrite(m1b, 0);
-  analogWrite(m2a, 100);   // Right motor forward
-  analogWrite(m2b, 0);
+  analogWrite(M1A, 0);       // left motor stopped
+  analogWrite(M1B, 0);
+  analogWrite(M2A, SPEED);   // right motor forward
+  analogWrite(M2B, 0);
 }
 
 void turnRight() {
-  analogWrite(m1a, 100);   // Left motor forward
-  analogWrite(m1b, 0);
-  analogWrite(m2a, 0);     // Right motor stops or reverses
-  analogWrite(m2b, 0);
+  analogWrite(M1A, SPEED);   // left motor forward
+  analogWrite(M1B, 0);
+  analogWrite(M2A, 0);       // right motor stopped
+  analogWrite(M2B, 0);
 }
 
 void stopMotors() {
-  analogWrite(m1a, 0);
-  analogWrite(m1b, 0);
-  analogWrite(m2a, 0);
-  analogWrite(m2b, 0);
+  analogWrite(M1A, 0);
+  analogWrite(M1B, 0);
+  analogWrite(M2A, 0);
+  analogWrite(M2B, 0);
 }
 
-// === Main Loop ===
 void loop() {
   long distance = getDistance();
-  int leftIR = digitalRead(irl);
-  int rightIR = digitalRead(irr);
+  int leftIR = digitalRead(IRL);
+  int rightIR = digitalRead(IRR);
 
   Serial.print("Distance: ");
   Serial.print(distance);
@@ -90,24 +95,21 @@ void loop() {
   Serial.print(" | IR Right: ");
   Serial.println(rightIR);
 
-  if (distance >= 8 && distance <= 20) {
-    if ((leftIR == 0 && rightIR == 0) || (leftIR == 1 && rightIR == 1)) {
-      moveForward();
-      Serial.println("Motors forward");
-    } else if (leftIR == 0) {
+  if (distance >= MIN_DIST_CM && distance <= MAX_DIST_CM) {
+    if (leftIR == 0 && rightIR == 1) {
       turnLeft();
       Serial.println("Motors left");
-    } else if (rightIR == 0) {
+    } else if (leftIR == 1 && rightIR == 0) {
       turnRight();
       Serial.println("Motors right");
     } else {
-      moveForward();  // Default forward
+      moveForward();
       Serial.println("Motors forward");
     }
   } else {
     stopMotors();
-    Serial.println("Motors Stop - Distance not in range");
+    Serial.println("Motors stop - distance not in range");
   }
 
-  delay(100);
+  delay(60);   // gives the ultrasonic echo time to die out between readings
 }
